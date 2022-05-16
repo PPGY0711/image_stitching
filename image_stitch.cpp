@@ -4,25 +4,50 @@ using namespace cv;
 using namespace std;
 using namespace cv::detail;
 
+#define ROWMASKRATIO (3.0/7.0)
+#define COLMASKRATIO (2.5/5.0)
+#define CANNYThs1 100
+#define CANNYThs2 150
+
 ImageStitcher::ImageStitcher() {}
 ImageStitcher::~ImageStitcher() {}
+
+static void getCanny(const Mat& src, Mat& dst){
+    Mat gray;
+    cvtColor(src, gray, COLOR_BGR2GRAY);
+    Mat edge;
+    //canny
+    Canny(gray, edge,CANNYThs1,CANNYThs2,3,true);
+    edge.copyTo(dst);
+}
+
 void ImageStitcher::getHomography(const cv::Mat &src1, const cv::Mat &mask1, const cv::Mat &src2, const cv::Mat &mask2,
-                                  cv::Mat &homography) {
+                                  cv::Mat &homography, bool flag) {
 //    imshow("src1", src1);
 //    imshow("mask1", mask1);
 //    imshow("src2", src2);
 //    imshow("mask2", mask2);
     ORBAlgorithm orb;
     ImageFeatures features1, features2;
+    Mat img1 = src1.clone(), img2 = src2.clone();
+    Mat newMask1 = mask1.clone(), newMask2 = mask2.clone();
+    if(flag){
+        // 提取图片边缘用于匹配
+        Mat edge1, edge2;
+        getCanny(img1, edge1);
+        getCanny(img2, edge2);
+        edge1.copyTo(img1);
+        edge2.copyTo(img2);
+    }
     cout << "detecting keypoints..." << endl;
-    orb.detectPoints(src1, mask1, src2, mask2, features1, features2);
+    orb.detectPoints(img1, newMask1, img2, newMask2, features1, features2);
     cout << "num of feature points detected in img1 and img2: "<<features1.keypoints.size() << ", " << features2.keypoints.size() << endl;
     vector<DMatch> matchPairs;
     cout << "matching images..." << endl;
     orb.matchPoints(features1, features2,matchPairs);
     cout << "computing the homography mat..." << endl;
-    string path = "../output/matchImage_"+to_string(this->count++)+".png";
-    orb.getHomographyMat(src1, src2, features1, features2, matchPairs, homography, path);
+    string path = "../output/canny/matchImage_"+to_string(this->count++)+".png";
+    orb.getHomographyMat(img1, img2, features1, features2, matchPairs, homography, path);
 }
 
 double ImageStitcher::cylinderProjection(const cv::Mat &src, cv::Mat &dst) {
@@ -111,43 +136,34 @@ void ImageStitcher::stitchImages(const std::vector<cv::Mat> &srcs, Mat &dst, int
     // 从中间位置往外拼
     c_num = c_num > s_num || c_num==0? s_num/2:c_num;
     this->centerProjectF = cylinderProjection(srcs[c_num], p_src1);
-//    imshow("before Cylinder Projection1", srcs[c_num]);
-//    imshow("after Cylinder Projection1", p_src1);
+    imshow("before Cylinder Projection1", srcs[c_num]);
+    imshow("after Cylinder Projection1", p_src1);
     // 画出柱面投影的中心点，为最终全景图片的反投影提供图形依据
     circle(p_src1, Point(p_src1.cols/2,p_src1.rows/2), 5, Scalar(0,255,0),1);
 //    imshow("draw center", p_src1);
-//    Mat revTmp;
-//    reverseCylinderProjection(p_src1, revTmp);
-//    imshow("after Reverse Cylinder Projection1", revTmp);
-//    waitKey(0);
+    Mat revTmp;
+    reverseCylinderProjection(p_src1, revTmp);
+    imshow("after Reverse Cylinder Projection1", revTmp);
+    waitKey(0);
     for(int i = c_num+1; i < s_num; ++i){
         // 从中间往右拼
         Mat p_src2;
         cylinderProjection(srcs[i], p_src2);
-        int extraCol = p_src2.cols/2;
+        int extraCol = p_src2.cols*(1-COLMASKRATIO);
         Mat tp_src1 = Mat::zeros(p_src1.rows, p_src1.cols + extraCol, p_src1.type());
         Mat tROI = tp_src1(Rect(0, 0, p_src1.cols, p_src1.rows));
         p_src1.convertTo(tROI, tROI.type());
         //homography mat
         Mat H;
-        if(i == c_num+1){
-            Mat mask = Mat::zeros(tp_src1.size(), CV_8UC1);
-            mask(Rect(extraCol,0,p_src1.cols/2, tp_src1.rows)).setTo(255);
-            Mat mask2 = Mat::zeros(p_src2.size(), CV_8UC1);
-            mask2(Rect(Point2f(0, 0), Point2f(p_src2.cols/2, p_src2.rows))).setTo(255);
-            getHomography(tp_src1, mask, p_src2, mask2, H);
-        }else
-        {
-            Mat mask1 = Mat::zeros(tp_src1.size(), CV_8UC1);
-            mask1(Rect(extraCol, 0, p_src1.cols*(1-1.0 / (i-c_num)), p_src1.rows)).setTo(255);
-            Mat mask2 = Mat::zeros(p_src2.size(), CV_8UC1);
-            mask2(Rect(Point2f(0, 0), Point2f(p_src2.cols/2, p_src2.rows))).setTo(255);
-            getHomography(tp_src1, mask1, p_src2, mask2, H);
-        }
+        Mat mask = Mat::zeros(tp_src1.size(), CV_8UC1);
+        mask(Rect(p_src1.cols*(1-COLMASKRATIO),0,extraCol+p_src1.cols*COLMASKRATIO, ROWMASKRATIO*tp_src1.rows)).setTo(255);
+        Mat mask2 = Mat::zeros(p_src2.size(), CV_8UC1);
+        mask2(Rect(0, 0, p_src2.cols*COLMASKRATIO, ROWMASKRATIO*p_src2.rows)).setTo(255);
+        getHomography(tp_src1, mask, p_src2, mask2, H, true);
         Mat tmp;
         // 将待拼接图像变换到src1所在的坐标系
         warpPerspective(p_src2, tmp, H, Size(tp_src1.cols, tp_src1.rows));
-//        imshow("tmp after warp perspective", tmp);
+        imshow("tmp after warp perspective", tmp);
         // 图像融合
         for (int m = 0; m < tmp.rows; m++)
         {
@@ -195,7 +211,7 @@ void ImageStitcher::stitchImages(const std::vector<cv::Mat> &srcs, Mat &dst, int
         // 从中间往左拼
         Mat p_src2;
         cylinderProjection(srcs[j], p_src2);
-        int extraCol = p_src2.cols/2;
+        int extraCol = p_src2.cols*(1-COLMASKRATIO);
         Mat tp_src1 = Mat::zeros(p_src1.rows, p_src1.cols + extraCol, p_src1.type());
         Mat tROI = tp_src1(Rect(extraCol, 0, p_src1.cols, p_src1.rows));
         p_src1.convertTo(tROI, tROI.type());
@@ -203,23 +219,15 @@ void ImageStitcher::stitchImages(const std::vector<cv::Mat> &srcs, Mat &dst, int
         imshow("tp_src1", tp_src1);
         waitKey(0);
         Mat H;
-        if(j == c_num-1){
-            Mat mask1 = Mat::zeros(tp_src1.size(), CV_8UC1);
-            mask1(Rect(extraCol, 0, p_src1.cols/2, p_src1.rows)).setTo(255);
-            Mat mask2 = Mat::zeros(p_src2.size(), CV_8UC1);
-            mask2(Rect(p_src2.cols/2, 0, p_src2.cols / 2, p_src2.rows)).setTo(255);
-            getHomography(tp_src1, mask1, p_src2, mask2, H);
-        }else{
-            Mat mask1 = Mat::zeros(tp_src1.size(), CV_8UC1);
-            mask1(Rect(extraCol, 0, p_src1.cols*(1-1.0 / (c_num-j)), p_src1.rows)).setTo(255);
-            Mat mask2 = Mat::zeros(p_src2.size(), CV_8UC1);
-            mask2(Rect(p_src2.cols/2, 0, p_src2.cols / 2, p_src2.rows)).setTo(255);
-            getHomography(tp_src1, mask1, p_src2, mask2, H);
-        }
+        Mat mask1 = Mat::zeros(tp_src1.size(), CV_8UC1);
+        mask1(Rect(extraCol, 0, p_src1.cols*COLMASKRATIO, ROWMASKRATIO*p_src1.rows)).setTo(255);
+        Mat mask2 = Mat::zeros(p_src2.size(), CV_8UC1);
+        mask2(Rect(p_src2.cols*(1-COLMASKRATIO), 0, p_src2.cols*COLMASKRATIO, ROWMASKRATIO*p_src2.rows)).setTo(255);
+        getHomography(tp_src1, mask1, p_src2, mask2, H, true);
         cout << H << endl;
         Mat tmp;
         warpPerspective(p_src2, tmp, H, Size(tp_src1.cols, tp_src1.rows));
-//        imshow("tmp after homography", tmp);
+        imshow("tmp after homography", tmp);
         // 图像融合
         for (size_t i = 0; i < tmp.rows; i++)
         {
@@ -261,7 +269,7 @@ void ImageStitcher::stitchImages(const std::vector<cv::Mat> &srcs, Mat &dst, int
         p_src1 = tmpROI;
     }
     dst = p_src1;
-    imwrite("../output/pano.bmp", dst);
+    imwrite("../output/canny/pano.bmp", dst);
 }
 
 Point sp(-1,-1);
@@ -304,12 +312,12 @@ static void on_mouse_click2(int event, int x, int y, int flags, void* userdata){
         if(p1.x == -1 && p1.y == -1){
             p1.x = x;
             p1.y = y;
-            circle(tmp, Point(x,y), 5, Scalar(0,255,0), 2, LINE_AA, 0);
+            circle(tmp, Point(x,y), 5, Scalar(255,0,0), 2, LINE_AA, 0);
         }else if(p2.x == -1 && p2.y==-1){
             p2.x = x;
             p2.y = y;
             circle(tmp, Point(x,y), 5, Scalar(0,0,255), 2, LINE_AA, 0);
-            line(tmp, p1, p2, Scalar(255,0,0), 2, LINE_8,0);
+            line(tmp, p1, p2, Scalar(0,255,0), 2, LINE_8,0);
             lines.emplace_back(make_pair(p1, p2));
             cout << "Push to vector :" << p1 << ", " << p2 << endl;
             p1.x = p1.y = p2.x = p2.y = -1;
@@ -329,6 +337,6 @@ void ImageStitcher::collectLineSegments(cv::Mat &src, std::vector<std::pair<cv::
     setMouseCallback("Point collection", on_mouse_click2, &img);
     cout << "选取点对构造直线方程，计算距离" << endl;
     waitKey(0);
-    imwrite("../output/lineSegmentPairs.bmp", pointTmp);
+    imwrite("../output/canny/lineSegmentPairs.bmp", pointTmp);
     pointPairs.assign(lines.begin(), lines.end());
 }

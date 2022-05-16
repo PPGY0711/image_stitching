@@ -28,7 +28,7 @@ public:
     ~ImageStitcher();
     int count;
     int centerProjectF;
-    void getHomography(const cv::Mat& src1, const cv::Mat& mask1, const cv::Mat& scr2, const cv::Mat& mask2, cv::Mat& homography);
+    void getHomography(const cv::Mat& src1, const cv::Mat& mask1, const cv::Mat& scr2, const cv::Mat& mask2, cv::Mat& homography, bool flag);
     double cylinderProjection(const cv::Mat& src, cv::Mat& dst);
     void reverseCylinderProjection(const cv::Mat& src, cv::Mat& dst);
     void stitchImages(const std::vector<cv::Mat>& srcs, cv::Mat& dst, int c_num);

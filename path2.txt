@@ -1,0 +1,2 @@
+../img/undist/preprocess_32.bmp
+../img/undist/preprocess_33.bmp

@@ -4,6 +4,9 @@ using namespace std;
 using namespace cv::detail;
 
 ORBAlgorithm::ORBAlgorithm() {}
+ORBAlgorithm::ORBAlgorithm(bool init) {
+    if(init) this->initDetectorsAndExtractors();
+}
 ORBAlgorithm::~ORBAlgorithm() {}
 
 //detect feature points from two images
@@ -23,7 +26,8 @@ void ORBAlgorithm::detectPoints(const Mat &img1, const Mat &mask1, const Mat &im
     computeImageFeatures(finder, img2, features2, mask2);
     t4 = getTickCount();
     double cost2 = 1000.0 * (t4-t3)/getTickFrequency();
-    cout << "detectPoints, time cost1: " << cost1 << ", time cost2: " << cost2 << endl;
+    cout << "detectPoints, time cost1: " << cost1 << ", point size1:" << features1.keypoints.size() << endl;
+    cout << "detectPoints, time cost2: " << cost2 << ", point size2:" << features2.keypoints.size() << endl;
 }
 
 //match feature points and return the match points pair
@@ -106,4 +110,95 @@ void ORBAlgorithm::getHomographyMat(const Mat& img1, const Mat& img2, const Imag
     drawMatches(img1, kp1, img2, kp2, goodMatches, matchImg, Scalar(0, 255, 0),Scalar(0,0,255));
     imwrite(imgPath, matchImg);
     imshow("match Result", matchImg);
+}
+
+void ORBAlgorithm::matchTwoPic(const Mat &img1, const Mat &mask1, const Mat &img2, const Mat &mask2, int detectFlag,
+                          int desFlag, Mat &homography) {
+
+//    cv::imshow("image0", img1);
+//    cv::imshow("image1", img2);
+    /*
+    step1:特征检测器
+    */
+    std::vector <cv::KeyPoint> key1;
+    std::vector <cv::KeyPoint> key2;
+    switch(detectFlag){
+        case DETECT_SURF:
+            this->surfDetector->detect(img1, key1, mask1);
+            this->surfDetector->detect(img2, key2, mask2);
+            break;
+        case DETECT_STAR:
+            this->starDetector->detect(img1, key1, mask1);
+            this->starDetector->detect(img2, key2, mask2);
+            break;
+        case DETECT_MSD:
+            this->msdDetector->detect(img1, key1, mask1);
+            this->msdDetector->detect(img2, key2, mask2);
+            break;
+        default:
+            // default使用orb
+            this->orbDetector->detect(img1, key1, mask1);
+            this->orbDetector->detect(img2, key2, mask2);
+            break;
+    }
+
+    /*
+    step2:描述子提取器
+    */
+    cv::Ptr<cv::xfeatures2d::SURF> Extractor;
+    Extractor = cv::xfeatures2d::SURF::create(800);
+    /*
+       以下都是xfeature2d中的提取器
+    -----SURF-----
+    -----SIFT-----
+    -----LUCID----
+    -----BriefDescriptorExtractor----
+    -----VGG-----
+    -----BoostDesc-----
+    */
+    cv::Mat descriptor1, descriptor2;
+    switch(desFlag){
+        case DES_SURF:
+            this->surfDetector->compute(img1, key1, descriptor1);
+            this->surfDetector->compute(img2, key2, descriptor2);
+            break;
+        case DES_BEBLID:
+            this->beblidExtractor->compute(img1, key1, descriptor1);
+            this->beblidExtractor->compute(img2, key2, descriptor2);
+            break;
+        case DES_BRIEF:
+            this->briefExtractor->compute(img1, key1, descriptor1);
+            this->briefExtractor->compute(img2, key2, descriptor2);
+            break;
+        default:
+            // default使用orb
+            this->orbDetector->compute(img1, key1, descriptor1);
+            this->orbDetector->compute(img2, key2, descriptor2);
+            break;
+    }
+    /*
+    step3:匹配器
+    */
+    cv::BFMatcher matcher;//暴力匹配器
+    std::vector<cv::DMatch> matches; // 存放匹配结果
+    std::vector<cv::DMatch> good_matches; //存放好的匹配结果
+    matcher.match(descriptor1, descriptor2, matches);
+    std::sort(matches.begin(), matches.end());     //筛选匹配点，根据match里面特征对的距离从小到大排序
+
+    int ptsPairs = std::min(500, (int)(matches.size() * 0.25));
+    std::cout << "匹配点数为" << ptsPairs << std::endl;
+    for (int i = 0; i < ptsPairs; i++)
+    {
+        good_matches.push_back(matches[i]);              //距离最小的500个压入新的DMatch
+    }
+
+    cv::Mat result;
+    cv::drawMatches(img1, key1,
+                    img2, key2,
+                    good_matches, result,
+                    cv::Scalar::all(-1), cv::Scalar::all(-1),
+                    std::vector<char>(),
+                    cv::DrawMatchesFlags::NOT_DRAW_SINGLE_POINTS);  //绘制匹配点
+    cv::imshow("result", result);
+    cv::waitKey(0);
 }
