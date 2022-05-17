@@ -1,0 +1,5 @@
+../img/origin/29.bmp
+../img/origin/30.bmp
+../img/origin/31.bmp
+../img/origin/32.bmp
+../img/origin/33.bmp

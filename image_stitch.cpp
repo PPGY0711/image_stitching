@@ -5,9 +5,9 @@ using namespace std;
 using namespace cv::detail;
 
 #define ROWMASKRATIO (3.0/7.0)
-#define COLMASKRATIO (2.5/5.0)
-#define CANNYThs1 100
-#define CANNYThs2 150
+#define COLMASKRATIO (1.0/3.0)
+#define CANNYThs1 80
+#define CANNYThs2 120
 
 ImageStitcher::ImageStitcher() {}
 ImageStitcher::~ImageStitcher() {}
@@ -159,7 +159,7 @@ void ImageStitcher::stitchImages(const std::vector<cv::Mat> &srcs, Mat &dst, int
         mask(Rect(p_src1.cols*(1-COLMASKRATIO),0,extraCol+p_src1.cols*COLMASKRATIO, ROWMASKRATIO*tp_src1.rows)).setTo(255);
         Mat mask2 = Mat::zeros(p_src2.size(), CV_8UC1);
         mask2(Rect(0, 0, p_src2.cols*COLMASKRATIO, ROWMASKRATIO*p_src2.rows)).setTo(255);
-        getHomography(tp_src1, mask, p_src2, mask2, H, true);
+        getHomography(tp_src1, mask, p_src2, mask2, H, false);
         Mat tmp;
         // 将待拼接图像变换到src1所在的坐标系
         warpPerspective(p_src2, tmp, H, Size(tp_src1.cols, tp_src1.rows));
@@ -223,7 +223,7 @@ void ImageStitcher::stitchImages(const std::vector<cv::Mat> &srcs, Mat &dst, int
         mask1(Rect(extraCol, 0, p_src1.cols*COLMASKRATIO, ROWMASKRATIO*p_src1.rows)).setTo(255);
         Mat mask2 = Mat::zeros(p_src2.size(), CV_8UC1);
         mask2(Rect(p_src2.cols*(1-COLMASKRATIO), 0, p_src2.cols*COLMASKRATIO, ROWMASKRATIO*p_src2.rows)).setTo(255);
-        getHomography(tp_src1, mask1, p_src2, mask2, H, true);
+        getHomography(tp_src1, mask1, p_src2, mask2, H, false);
         cout << H << endl;
         Mat tmp;
         warpPerspective(p_src2, tmp, H, Size(tp_src1.cols, tp_src1.rows));

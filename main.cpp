@@ -1,7 +1,7 @@
 /*
  * @author: Guanyan Peng
  * @create date: 2022/5/5
- * @update date: 2022/5/14
+ * @update date: 2022/5/17
  * @project: image stitching and object measurement
  * @ref1: example given by official opencv doc
  * @link: https://docs.opencv.org/4.0.0/d9/dd8/samples_2cpp_2stitching_detailed_8cpp-example.html
@@ -26,6 +26,7 @@ using namespace std;
 #define CENTER_DIS 0.5
 #define SharpenFactor 1     //锐化系数
 #define SharpenThs 30       //锐化阈值
+#define IMGNO 29
 //vector<Mat> preprocess;
 Point lp(-1,-1),rp(-1,-1);
 Mat curImg;
@@ -168,7 +169,7 @@ vector<Mat> calibrateAndUndistortImages(Mat& src, vector<Mat>& imgs, double* pix
         cout << cameraMatrix << endl;
         validCalibration(objPoints, imgPoints, rvecsMat, tvecsMat, newCameraMatrix, distCoeffs);
         vector<Mat> undistImgs;
-        int count = 29;
+        int count = IMGNO;
         for(Mat& mat: imgs){
             Mat dst = mat.clone();
             undistort(mat, dst, cameraMatrix, distCoeffs, newCameraMatrix);
@@ -256,7 +257,7 @@ void ImproveUSM(const Mat& src, Mat &BlurImg, int Threshold, float Factor, strin
 void preprocessImgs(vector<Mat>& imgs){
     // 预处理：双边滤波+手动描边
     vector<Mat> ret((int)imgs.size());
-    int count = 0, no=29;
+    int count = 0, no=IMGNO;
     for(Mat& mat:imgs){
         // 这里不能转成gray不然画图受影响，先把BGR转到YUV再滤波
         Mat sharpened;
@@ -321,7 +322,7 @@ void customStitchImages(ImageStitcher& stitcher, vector<Mat>& undistImgs, Mat& d
 void stitchImages(Mat& dst){
     string img_name;
     vector<Mat> marked;
-    ifstream in("../path2.txt");
+    ifstream in("../for_stitch.txt");
     while(getline(in, img_name))
     {
         Mat img = imread(img_name);
@@ -357,21 +358,21 @@ void testPrecision(Mat& stretch, double pixelDis){
         double disMeasure = pixelSub*pixelDis;
         tS1 += disMeasure;
         error1.emplace_back(disMeasure-len1);
-        cout << "第" << i << "个1.0间隔的长度测量值为：" << disMeasure << "mm，测量误差为: " << disMeasure-len1 << "mm." << endl;
+        cout << "第" << i+1 << "个0.5间隔的长度测量值为：" << disMeasure << "mm，测量误差为: " << disMeasure-len1 << "mm." << endl;
     }
     cout << tS1 << endl;
     tE1 = (tS1-(len1*(vpos.size()-1)))/(vpos.size()-1);
-    cout << "测量0.5cm的总误差" << tE1 << endl;
+    cout << "测量0.5cm的平均误差" << tE1 << endl;
     // 步长为2计算1.0cm距离的精度
     for(int i = 0; i < vpos.size()-2; i++){
         double pixelSub = vpos[i+2]-vpos[i];
         double disMeasure = pixelSub*pixelDis;
         tS2 += disMeasure;
         error2.emplace_back(disMeasure-len2);
-        cout << "第" << i << "个1.0间隔的长度测量值为：" << disMeasure << "mm，测量误差为: " << disMeasure-len2 << "mm." << endl;
+        cout << "第" << i+1 << "个1.0间隔的长度测量值为：" << disMeasure << "mm，测量误差为: " << disMeasure-len2 << "mm." << endl;
     }
     tE2 = (tS2-(len2*(vpos.size()-2)))/(vpos.size()-2);
-    cout << "测量1.0cm的总误差" << tE2 << endl;
+    cout << "测量1.0cm的平均误差" << tE2 << endl;
 }
 
 Point rulerLeft(-1,-1), rulerRight(-1,-1);
@@ -448,7 +449,7 @@ static void calLineExp(Point p1, Point p2, double* angle){
 void readOriginImgs(vector<Mat>& imgs){
     // 读取本地图片并存到向量中
     string img_name;
-    ifstream fin("../path.txt");
+    ifstream fin("../for_calib.txt");
     int seq = 1;
     while(getline(fin, img_name))
     {
@@ -501,6 +502,18 @@ void readOriginImgs(vector<Mat>& imgs){
     cout<<"图像读取完毕，数量为"<<num_images<<endl;
 }
 
+void checkOriginPrecision(){
+    double pixelDis = 0.0146816;
+    string img_name;
+    ifstream in("../origin.txt");
+    while(getline(in, img_name))
+    {
+        Mat img = imread(img_name);
+        testPrecision(img, pixelDis);
+        cout << endl;
+    }
+}
+
 int main(int argc, char** argv){
     double pixelDis = 0.0146816;
 
@@ -513,6 +526,8 @@ int main(int argc, char** argv){
 ////    一次性的过程，预处理正畸之后的图片，人工画出标志线
 //    preprocessImgs(undistImgs);
 
+//    checkOriginPrecision();
+
     Mat stretch;
     stitchImages(stretch);
     testPrecision(stretch, pixelDis);
@@ -521,8 +536,10 @@ int main(int argc, char** argv){
     return 0;
 }
 
-/*
- * 1.为什么30和31不能拼：重叠部分太少了，因此要计算一下如果要能够拼接，至少需要有30%的重叠，这样的话镜头的视野只能移动多长的距离？
- * 2.单独拼接29-30，31-33，需要实现图片从柱状投影之后的拉直效果done
- * 3.尝试Canny先做预处理之后，用边缘检测的图去做特征点匹配+拼接
+/* Update 5.17:
+ * 1.尝试Canny先做预处理之后，用边缘检测的图去做特征点匹配+拼接，用处不大；目前采取手动描边+调整mask边界的方式改善拼接效果
+ * 2.发现问题：不拼接之前，测量0.5cm的误差在0.1mm左右，测量1.0cm的误差在0.2cm左右（有累计），
+ *           这是否说明标定存在误差，或者还是选点的误差，因为尺子上面刻度就占了好几个像素？
+ * 3.29-30,30-31,31-32可以单独拼了，但是连着拼3张还需要调参，29-30、31-32拼接效果较好，30-31拼接效果一般
+ * 4.32-33拼不上可能是重叠部分太小了，小于1/2，其他几幅都至少是1/2
  * */
