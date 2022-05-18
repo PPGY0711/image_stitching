@@ -16,7 +16,7 @@ void ORBAlgorithm::detectPoints(const Mat &img1, const Mat &mask1, const Mat &im
                                 ImageFeatures &features1, ImageFeatures &features2) {
     //detect 4000 keypoints, the first image scale is 1.2 and detect 2 scale images
     Ptr<Feature2D> finder;
-    finder = ORB::create(10000, 1.2);
+    finder = ORB::create(32000,2.0);
     int64 t1 = getTickCount(), t2 = 0, t3 = 0, t4 = 0;
     computeImageFeatures(finder, img1, features1, mask1);
     t2 = getTickCount();

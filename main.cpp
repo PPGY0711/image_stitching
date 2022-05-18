@@ -286,42 +286,48 @@ void preprocessImgs(vector<Mat>& imgs){
 
 void customStitchImages(ImageStitcher& stitcher, vector<Mat>& undistImgs, Mat& dst, Mat& stretch, vector<double> cr2r, vector<double> cr2l){
     stitcher.stitchImages(undistImgs, dst, cr2r, cr2l, (int)undistImgs.size()/2);
+//    stitcher.stitchImages(undistImgs, dst, cr2r, cr2l, 0);
     imshow("stitcher", dst);
-    int centerX = dst.cols/2, centerY = dst.rows/2;
-    int chooseX = -1;
-    stitcher.chooseCenterPoint(dst, &chooseX);
-    waitKey(0);
-    cout << centerX << ", " << centerY << ", " << chooseX <<  endl;
-    // 让选择的中心点成为中心，图像需要平移
-    int displacement = centerX-chooseX;
-    int newWidth = (abs(displacement)+centerX)*2;
-    Mat adjust = Mat::zeros(dst.rows, newWidth, dst.type());
+    if(stitcher.useProject){
+        int centerX = dst.cols/2, centerY = dst.rows/2;
+        int chooseX = -1;
+        stitcher.chooseCenterPoint(dst, &chooseX);
+        waitKey(0);
+        cout << centerX << ", " << centerY << ", " << chooseX <<  endl;
+        // 让选择的中心点成为中心，图像需要平移
+        int displacement = centerX-chooseX;
+        int newWidth = (abs(displacement)+centerX)*2;
+        Mat adjust = Mat::zeros(dst.rows, newWidth, dst.type());
 //    cout << adjust.size() << endl;
 //    cout << newWidth/2-chooseX << endl;
-    // 图像平移或者用ROI
-    // 得到中心点坐标之后，将中心点移到视野中央
-    Mat tROI = adjust(Rect(displacement>0?newWidth/2-chooseX-1:0, 0, dst.cols, dst.rows));
-    dst.convertTo(tROI, tROI.type());
-    Mat tmpAd = adjust.clone();
-    rectangle(tmpAd, Rect(displacement>0?newWidth/2-chooseX:0, 0, dst.cols, dst.rows), Scalar(0,255,0),2,8,0);
-    line(tmpAd, Point(0,adjust.rows/2), Point(adjust.cols-1,adjust.rows/2), Scalar(255,0,0));
-    line(tmpAd, Point(adjust.cols/2,0), Point(adjust.cols/2,adjust.rows-1), Scalar(0,0,255));
-    line(tmpAd, Point(chooseX,0), Point(chooseX,adjust.rows-1), Scalar(255,0,255));
-    line(tmpAd, Point(adjust.cols-chooseX-1,0), Point(adjust.cols-chooseX-1,adjust.rows-1), Scalar(255,0,255));
-    imshow("adjust", tmpAd);
-    imwrite("../output/canny/adjust.bmp", tmpAd);
-    waitKey(0);
-    Mat linear;
-    stitcher.reverseCylinderProjection(adjust, linear);
-    imshow("after lined and not remove blackside", linear);
-    waitKey(0);
-    stitcher.removeBlackSide(linear, linear);
-    imshow("after lined", linear);
-    imwrite("../output/canny/stretch.bmp", linear);
-    stretch = linear.clone();
+        // 图像平移或者用ROI
+        // 得到中心点坐标之后，将中心点移到视野中央
+        Mat tROI = adjust(Rect(displacement>0?newWidth/2-chooseX-1:0, 0, dst.cols, dst.rows));
+        dst.convertTo(tROI, tROI.type());
+        Mat tmpAd = adjust.clone();
+        rectangle(tmpAd, Rect(displacement>0?newWidth/2-chooseX:0, 0, dst.cols, dst.rows), Scalar(0,255,0),2,8,0);
+        line(tmpAd, Point(0,adjust.rows/2), Point(adjust.cols-1,adjust.rows/2), Scalar(255,0,0));
+        line(tmpAd, Point(adjust.cols/2,0), Point(adjust.cols/2,adjust.rows-1), Scalar(0,0,255));
+        line(tmpAd, Point(chooseX,0), Point(chooseX,adjust.rows-1), Scalar(255,0,255));
+        line(tmpAd, Point(adjust.cols-chooseX-1,0), Point(adjust.cols-chooseX-1,adjust.rows-1), Scalar(255,0,255));
+        imshow("adjust", tmpAd);
+        imwrite("../output/canny/adjust.bmp", tmpAd);
+        waitKey(0);
+        Mat linear;
+        stitcher.reverseCylinderProjection(adjust, linear);
+        imshow("after lined and not remove blackside", linear);
+        waitKey(0);
+        stitcher.removeBlackSide(linear, linear);
+        imshow("after lined", linear);
+        imwrite("../output/canny/stretch.bmp", linear);
+        stretch = linear.clone();
+    }else{
+        stitcher.removeBlackSide(dst, stretch);
+        imwrite("../output/canny/stretch.bmp", stretch);
+    }
 }
 
-void stitchImages(Mat& dst){
+void stitchImages(Mat& dst, bool useProject=true){
     string img_name;
     vector<Mat> marked;
     ifstream in("../for_stitch.txt");
@@ -330,11 +336,11 @@ void stitchImages(Mat& dst){
         Mat img = imread(img_name);
         marked.push_back(img);
     }
-    vector<double> colRatios2R = {0.5};
-    vector<double> colRatios2L = {0.5,2.0/3.0};
+    vector<double> colRatios2R = {0.55};
+    vector<double> colRatios2L = {4.0/5.0};
     // 31-33图片正畸后拼接
     Mat tmpDst, stretch;
-    ImageStitcher stitcher;
+    ImageStitcher stitcher(useProject);
     stitcher.count = 0;
     customStitchImages(stitcher, marked, tmpDst, stretch, colRatios2R, colRatios2L);
     stretch.copyTo(dst);
@@ -510,6 +516,7 @@ void readOriginImgs(vector<Mat>& imgs){
             merge(channels, yuv);
             cvtColor(yuv, darken, COLOR_YCrCb2BGR);
             darken.copyTo(img);
+            imwrite("../img/origin/darken30.bmp",img);
         }
         tmpWinName = "Choose Ruler Border";
         // 将所有图片中的尺子边缘保持在水平，选出尺子两端的点计算直线方程和倾角，通过旋转变化得到新的图
@@ -560,10 +567,10 @@ int main(int argc, char** argv){
 //    preprocessImgs(undistImgs);
 //    lineUpVertical();
 
-//    checkOriginPrecision();
-    Mat stretch;
-    stitchImages(stretch);
-    testPrecision(stretch, pixelDis);
+    checkOriginPrecision();
+//    Mat stretch;
+//    stitchImages(stretch, false);
+//    testPrecision(stretch, pixelDis);
     waitKey(0);
     destroyAllWindows();
     return 0;

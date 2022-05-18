@@ -25,19 +25,21 @@
 class ImageStitcher{
 public:
     ImageStitcher();
+    ImageStitcher(bool useProject);
     ~ImageStitcher();
     int count;
     int centerProjectF;
+    bool useProject;
     void getHomography(const cv::Mat& src1, const cv::Mat& mask1, const cv::Mat& scr2, const cv::Mat& mask2, cv::Mat& homography, bool flag);
     double cylinderProjection(const cv::Mat& src, cv::Mat& dst);
     void reverseCylinderProjection(const cv::Mat& src, cv::Mat& dst);
     void stitchImages(const std::vector<cv::Mat>& srcs, cv::Mat& dst, std::vector<double> cr2r, std::vector<double> cr2l, int c_num);
     void chooseCenterPoint(cv::Mat &src, int* centerX);
     void collectLineSegments(cv::Mat &src, std::vector<std::pair<cv::Point, cv::Point>>& pointPairs);
-    static void removeBlackSide(cv::Mat& src, cv::Mat& dst, int pos_num=6){
+    static void removeBlackSide(cv::Mat& src, cv::Mat& dst, int pos_num=8){
 //        std::cout << src<< std::endl;
-//        cv::imshow("removeBlackSide", src);
-//        cv::waitKey(0);
+        cv::imshow("removeBlackSide", src);
+        cv::waitKey(0);
         std::cout << src.cols << ", " << src.rows << std::endl;
         // 从右边开始找最远的不为0的像素点，去除黑边
         int maxNotZeroFromRight = 0, minNotZeroFromLeft = 0;
@@ -81,7 +83,12 @@ public:
         }
         std::cout << "maxNotZero From Right: " << maxNotZeroFromRight << std::endl;
         std::cout << "minNotZero From Left: " << minNotZeroFromLeft << std::endl;
-        dst = src(cv::Rect(cv::Point2f(minNotZeroFromLeft, 0), cv::Point2f(std::min(maxNotZeroFromRight,src.cols-1), src.rows - 1)));
+        cv::Mat tmp;
+        tmp = src(cv::Rect(cv::Point2f(minNotZeroFromLeft, 0), cv::Point2f(std::min(maxNotZeroFromRight,src.cols-1), src.rows - 1)));
+        tmp.copyTo(dst);
+        cv::imshow("after removeBlackSide", dst);
+        cv::waitKey(0);
+        std::cout << src.cols << ", " << src.rows << std::endl;
     }
 };
 #endif //STITCH_C_IMAGE_STITCH_H
