@@ -31,26 +31,49 @@ public:
     void getHomography(const cv::Mat& src1, const cv::Mat& mask1, const cv::Mat& scr2, const cv::Mat& mask2, cv::Mat& homography, bool flag);
     double cylinderProjection(const cv::Mat& src, cv::Mat& dst);
     void reverseCylinderProjection(const cv::Mat& src, cv::Mat& dst);
-    void stitchImages(const std::vector<cv::Mat>& srcs, cv::Mat& dst, int c_num);
+    void stitchImages(const std::vector<cv::Mat>& srcs, cv::Mat& dst, std::vector<double> cr2r, std::vector<double> cr2l, int c_num);
     void chooseCenterPoint(cv::Mat &src, int* centerX);
     void collectLineSegments(cv::Mat &src, std::vector<std::pair<cv::Point, cv::Point>>& pointPairs);
-    static void removeBlackSide(const cv::Mat& src, cv::Mat& dst){
+    static void removeBlackSide(cv::Mat& src, cv::Mat& dst, int pos_num=6){
+//        std::cout << src<< std::endl;
+//        cv::imshow("removeBlackSide", src);
+//        cv::waitKey(0);
+        std::cout << src.cols << ", " << src.rows << std::endl;
         // 从右边开始找最远的不为0的像素点，去除黑边
         int maxNotZeroFromRight = 0, minNotZeroFromLeft = 0;
-        const uchar* p_middle = src.ptr<uchar>(src.rows / 2);
+        uchar* p_pos[pos_num+1];
+        for(int i = 0; i < pos_num; i++){
+            int y = (int)((double)i*src.rows/(pos_num));
+//            std::cout << y << std::endl;
+            p_pos[i] = src.ptr<uchar>(y);
+        }
+        p_pos[pos_num] = src.ptr<uchar>(src.cols-1);
         for (int m = (src.cols-1)*3; m >= 0; m-=3)
         {
-            bool b_middle = p_middle[m] || p_middle[m + 1] || p_middle[m + 2];
-            if (b_middle)
+            std::vector<bool> pixel_exist(pos_num);
+            bool allExist = false;
+            for(int i = 0; i <= pos_num; i++){
+//                std::cout << "col: " << m << std::endl;
+                pixel_exist[i] = p_pos[i][m] || p_pos[i][m + 1] || p_pos[i][m + 2];
+//                std::cout << (int)p_pos[0][m] <<", "<<  (int)p_pos[0][m + 1] <<", "<<  (int)p_pos[0][m + 2] << std::endl;
+                allExist = (allExist||pixel_exist[i]);
+            }
+            if (allExist)
             {
+//                std::cout << (int)p_pos[0][m] <<", "<<  (int)p_pos[0][m + 1] <<", "<<  (int)p_pos[0][m + 2] << std::endl;
                 maxNotZeroFromRight = m/3;
                 break;
             }
         }
         for (int m = 0; m < src.cols*3; m+=3)
         {
-            bool b_middle = p_middle[m] || p_middle[m + 1] || p_middle[m + 2];
-            if (b_middle)
+            std::vector<bool> pixel_exist(pos_num+1);
+            bool allExist = false;
+            for(int i = 0; i <= pos_num; i++){
+                pixel_exist[i] = p_pos[i][m] || p_pos[i][m + 1] || p_pos[i][m + 2];
+                allExist = (allExist||pixel_exist[i]);
+            }
+            if (allExist)
             {
                 minNotZeroFromLeft = m/3;
                 break;

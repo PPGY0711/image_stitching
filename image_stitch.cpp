@@ -58,6 +58,7 @@ double ImageStitcher::cylinderProjection(const cv::Mat &src, cv::Mat &dst) {
     dst = src.clone();
     double alpha = PI/5;
     double f = width / (2 * tan(alpha / 2));
+//    double f = 1.5*width / (2*tan(alpha / 2));
     double theta, pointX, pointY;
     for (int i = 0; i < height; i++) {
         uchar *ptr = dst.ptr<uchar>(i);
@@ -128,7 +129,7 @@ void ImageStitcher::reverseCylinderProjection(const Mat &src, Mat &dst) {
 }
 
 
-void ImageStitcher::stitchImages(const std::vector<cv::Mat> &srcs, Mat &dst, int c_num) {
+void ImageStitcher::stitchImages(const std::vector<cv::Mat> &srcs, Mat &dst, std::vector<double> cr2r, std::vector<double> cr2l, int c_num) {
     // 图片将从图片序列的中间往两边拼接
     int s_num = (int)srcs.size();
     cout << "num of images: " << s_num << endl;
@@ -149,16 +150,16 @@ void ImageStitcher::stitchImages(const std::vector<cv::Mat> &srcs, Mat &dst, int
         // 从中间往右拼
         Mat p_src2;
         cylinderProjection(srcs[i], p_src2);
-        int extraCol = p_src2.cols*(1-COLMASKRATIO);
+        int extraCol = p_src2.cols*(1-cr2r[i-c_num-1]);
         Mat tp_src1 = Mat::zeros(p_src1.rows, p_src1.cols + extraCol, p_src1.type());
         Mat tROI = tp_src1(Rect(0, 0, p_src1.cols, p_src1.rows));
         p_src1.convertTo(tROI, tROI.type());
         //homography mat
         Mat H;
         Mat mask = Mat::zeros(tp_src1.size(), CV_8UC1);
-        mask(Rect(p_src1.cols*(1-COLMASKRATIO),0,extraCol+p_src1.cols*COLMASKRATIO, ROWMASKRATIO*tp_src1.rows)).setTo(255);
+        mask(Rect(p_src1.cols*(1-cr2r[i-c_num-1]),0,extraCol+p_src1.cols*cr2r[i-c_num-1], ROWMASKRATIO*tp_src1.rows)).setTo(255);
         Mat mask2 = Mat::zeros(p_src2.size(), CV_8UC1);
-        mask2(Rect(0, 0, p_src2.cols*COLMASKRATIO, ROWMASKRATIO*p_src2.rows)).setTo(255);
+        mask2(Rect(0, 0, p_src2.cols*cr2r[i-c_num-1], ROWMASKRATIO*p_src2.rows)).setTo(255);
         getHomography(tp_src1, mask, p_src2, mask2, H, false);
         Mat tmp;
         // 将待拼接图像变换到src1所在的坐标系
@@ -175,7 +176,8 @@ void ImageStitcher::stitchImages(const std::vector<cv::Mat> &srcs, Mat &dst, int
                 {
                     if (p_tmp[n] || p_tmp[n+1] || p_tmp[n+2])
                     {
-                        int dis = n / 3 - extraCol;
+//                        int dis = n / 3 - extraCol;
+                        int dis = tp_src1.cols - n / 3;
                         if (dis < 200 && dis > 0)
                         {
                             double weight = 1.0 * dis / 200;
@@ -205,13 +207,13 @@ void ImageStitcher::stitchImages(const std::vector<cv::Mat> &srcs, Mat &dst, int
         p_src1 = tmpROI;
     }
     dst = p_src1;
-//    imshow("stitch from center to right", dst);
+    imshow("stitch from center to right", dst);
     waitKey(0);
     for(int j = c_num-1; j >= 0; --j){
         // 从中间往左拼
         Mat p_src2;
         cylinderProjection(srcs[j], p_src2);
-        int extraCol = p_src2.cols*(1-COLMASKRATIO);
+        int extraCol = p_src2.cols*cr2l[c_num-1-j];
         Mat tp_src1 = Mat::zeros(p_src1.rows, p_src1.cols + extraCol, p_src1.type());
         Mat tROI = tp_src1(Rect(extraCol, 0, p_src1.cols, p_src1.rows));
         p_src1.convertTo(tROI, tROI.type());
@@ -220,9 +222,9 @@ void ImageStitcher::stitchImages(const std::vector<cv::Mat> &srcs, Mat &dst, int
         waitKey(0);
         Mat H;
         Mat mask1 = Mat::zeros(tp_src1.size(), CV_8UC1);
-        mask1(Rect(extraCol, 0, p_src1.cols*COLMASKRATIO, ROWMASKRATIO*p_src1.rows)).setTo(255);
+        mask1(Rect(extraCol, 0, p_src1.cols*cr2l[c_num-1-j], ROWMASKRATIO*p_src1.rows)).setTo(255);
         Mat mask2 = Mat::zeros(p_src2.size(), CV_8UC1);
-        mask2(Rect(p_src2.cols*(1-COLMASKRATIO), 0, p_src2.cols*COLMASKRATIO, ROWMASKRATIO*p_src2.rows)).setTo(255);
+        mask2(Rect(p_src2.cols*(1-cr2l[c_num-1-j]), 0, p_src2.cols*cr2l[c_num-1-j], ROWMASKRATIO*p_src2.rows)).setTo(255);
         getHomography(tp_src1, mask1, p_src2, mask2, H, false);
         cout << H << endl;
         Mat tmp;
@@ -233,14 +235,13 @@ void ImageStitcher::stitchImages(const std::vector<cv::Mat> &srcs, Mat &dst, int
         {
             uchar* p_roiMat = tp_src1.ptr<uchar>(i);
             uchar* p_tmp = tmp.ptr<uchar>(i);
-            //double dis = roiMat.cols - H.at<double>(0, 2);
             for (size_t j = 0; j < tmp.cols * 3; j += 3)
             {
                 if (p_roiMat[j] || p_roiMat[j + 1] || p_roiMat[j + 2])
                 {
                     if (p_tmp[j] || p_tmp[j + 1] || p_tmp[j + 2])
                     {
-                        int dis = tp_src1.cols - j / 3;
+                        int dis = j / 3 - extraCol;
                         if (dis < 200 && dis > 0)
                         {
                             double weight = 1.0 * dis / 200;
@@ -281,7 +282,7 @@ static void on_mouse_click(int event, int x, int y, int flags, void* userdata){
         sp.x = x;
         sp.y = y;
         *pos = x;
-        std::cout << "start point: " << sp << std::endl;
+        std::cout << "start point: " << sp << ", pos value:" << *pos << std::endl;
     }
 }
 
@@ -294,7 +295,7 @@ void ImageStitcher::chooseCenterPoint(Mat &src, int* centerX) {
     line(dst, Point(0, dst.rows/2),Point(dst.cols-1, dst.rows/2), Scalar(0,255,0));
     imshow("choose center point", dst);
     setMouseCallback("choose center point", on_mouse_click, &dst);
-    cout << "choose center pos: (" << sp.x << ", " << sp.y << ")" <<endl;
+//    cout << "choose center pos: (" << sp.x << ", " << sp.y << ")" <<endl;
     // 选取后按任意键一次以结束调用
     waitKey(0);
 }

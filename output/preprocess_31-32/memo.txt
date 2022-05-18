@@ -1,0 +1,2 @@
+#define ROWMASKRATIO (3.0/7.0)
+#define COLMASKRATIO (2.5/5.0)

@@ -1,7 +1,7 @@
 /*
  * @author: Guanyan Peng
  * @create date: 2022/5/5
- * @update date: 2022/5/17
+ * @update date: 2022/5/18
  * @project: image stitching and object measurement
  * @ref1: example given by official opencv doc
  * @link: https://docs.opencv.org/4.0.0/d9/dd8/samples_2cpp_2stitching_detailed_8cpp-example.html
@@ -27,7 +27,7 @@ using namespace std;
 #define SharpenFactor 1     //锐化系数
 #define SharpenThs 30       //锐化阈值
 #define IMGNO 29
-//vector<Mat> preprocess;
+
 Point lp(-1,-1),rp(-1,-1);
 Mat curImg;
 string winName;
@@ -273,7 +273,6 @@ void preprocessImgs(vector<Mat>& imgs){
         channels[0] = filtered;
         merge(channels, filtered);
         cvtColor(filtered, filtered, COLOR_YCrCb2BGR);
-//        ImproveUSM(filtered, sharpened, SharpenThs, SharpenFactor, path);
         winName = "draw lines " + to_string(count);
         namedWindow(winName, WINDOW_AUTOSIZE);
         filtered.copyTo(curImg);
@@ -285,13 +284,14 @@ void preprocessImgs(vector<Mat>& imgs){
     }
 }
 
-void customStitchImages(ImageStitcher& stitcher, vector<Mat>& undistImgs, Mat& dst, Mat& stretch){
-    stitcher.stitchImages(undistImgs, dst, (int)undistImgs.size()/2);
+void customStitchImages(ImageStitcher& stitcher, vector<Mat>& undistImgs, Mat& dst, Mat& stretch, vector<double> cr2r, vector<double> cr2l){
+    stitcher.stitchImages(undistImgs, dst, cr2r, cr2l, (int)undistImgs.size()/2);
     imshow("stitcher", dst);
     int centerX = dst.cols/2, centerY = dst.rows/2;
     int chooseX = -1;
     stitcher.chooseCenterPoint(dst, &chooseX);
-    cout << centerX << ", " << centerY << "," << chooseX <<  endl;
+    waitKey(0);
+    cout << centerX << ", " << centerY << ", " << chooseX <<  endl;
     // 让选择的中心点成为中心，图像需要平移
     int displacement = centerX-chooseX;
     int newWidth = (abs(displacement)+centerX)*2;
@@ -309,13 +309,15 @@ void customStitchImages(ImageStitcher& stitcher, vector<Mat>& undistImgs, Mat& d
     line(tmpAd, Point(chooseX,0), Point(chooseX,adjust.rows-1), Scalar(255,0,255));
     line(tmpAd, Point(adjust.cols-chooseX-1,0), Point(adjust.cols-chooseX-1,adjust.rows-1), Scalar(255,0,255));
     imshow("adjust", tmpAd);
+    imwrite("../output/canny/adjust.bmp", tmpAd);
     waitKey(0);
     Mat linear;
     stitcher.reverseCylinderProjection(adjust, linear);
+    imshow("after lined and not remove blackside", linear);
+    waitKey(0);
     stitcher.removeBlackSide(linear, linear);
     imshow("after lined", linear);
     imwrite("../output/canny/stretch.bmp", linear);
-    imwrite("../output/canny/adjust.bmp", tmpAd);
     stretch = linear.clone();
 }
 
@@ -328,11 +330,13 @@ void stitchImages(Mat& dst){
         Mat img = imread(img_name);
         marked.push_back(img);
     }
+    vector<double> colRatios2R = {0.5};
+    vector<double> colRatios2L = {0.5,2.0/3.0};
     // 31-33图片正畸后拼接
     Mat tmpDst, stretch;
     ImageStitcher stitcher;
     stitcher.count = 0;
-    customStitchImages(stitcher, marked, tmpDst, stretch);
+    customStitchImages(stitcher, marked, tmpDst, stretch, colRatios2R, colRatios2L);
     stretch.copyTo(dst);
 }
 
@@ -416,14 +420,43 @@ static void my_rotate(const Mat& image, Mat& dst, int lineCenterHeight, double a
     warpAffine(image, tmpDst, M, Size(nw,nh), INTER_LINEAR, 0, Scalar(0,0,0));
     imshow("rotate", tmpDst);
     tmpDst.copyTo(dst);
-//    int transy = lineCenterHeight-h/2;
-//    cout << "transY: " << transy << endl;
-//    Mat transDst;
-//    Mat M3 = (cv::Mat_<double>(2, 3) << 1.0, 0, 0, 0, 1, -transy);
-//    cout << M3 << endl;
-//    warpAffine(tmpDst, transDst, M3, Size(tmpDst.cols, tmpDst.rows));
-//    imshow("transy", transDst);
-//    transDst.copyTo(dst);
+    int transy = lineCenterHeight-h/2;
+    cout << "transY: " << transy << endl;
+    Mat transDst;
+    Mat M3 = (cv::Mat_<double>(2, 3) << 1.0, 0, 0, 0, 1, -transy);
+    cout << M3 << endl;
+    warpAffine(tmpDst, transDst, M3, Size(tmpDst.cols, tmpDst.rows));
+    imshow("transy", transDst);
+    transDst.copyTo(dst);
+}
+
+static void lineUpVertical(){
+    string img_name;
+    vector<Mat> imgs;
+    ifstream in("../for_lineup.txt");
+    while(getline(in, img_name))
+    {
+        Mat img = imread(img_name);
+        imgs.push_back(img);
+    }
+    int maxH = 0;
+    for(auto& mat: imgs){
+        maxH = max(maxH, mat.rows);
+    }
+    int img_size = (int)imgs.size();
+    int count = IMGNO;
+    for(int i = 0; i < img_size; i++){
+        Mat tmp = imgs[i].clone();
+        int transy = maxH/2-tmp.rows/2;
+        cout << "transY: " << transy << endl;
+        Mat transDst;
+        Mat M3 = (cv::Mat_<double>(2, 3) << 1.0, 0, 0, 0, 1, transy);
+        cout << M3 << endl;
+        warpAffine(tmp, transDst, M3, Size(tmp.cols, maxH));
+        imshow("transy", transDst);
+        imwrite("../img/undist/lineup_"+to_string(count++)+".bmp", transDst);
+        waitKey(0);
+    }
 }
 
 static void calLineExp(Point p1, Point p2, double* angle){
@@ -523,11 +556,11 @@ int main(int argc, char** argv){
 //    Mat calib = imread("../calib/big.bmp");
 //    vector<Mat> undistImgs = calibrateAndUndistortImages(calib, imgs, &pixelDis);
 //    cout << "平均像素距离：" << pixelDis << "mm" << endl;
-////    一次性的过程，预处理正畸之后的图片，人工画出标志线
+//    一次性的过程，预处理正畸之后的图片，人工画出标志线
 //    preprocessImgs(undistImgs);
+//    lineUpVertical();
 
 //    checkOriginPrecision();
-
     Mat stretch;
     stitchImages(stretch);
     testPrecision(stretch, pixelDis);

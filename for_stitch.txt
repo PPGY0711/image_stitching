@@ -1,2 +1,4 @@
-../img/undist/preprocess_32.bmp
-../img/undist/preprocess_33.bmp
+../img/undist/lineup_29.bmp
+../img/undist/lineup_30.bmp
+../img/undist/lineup_31.bmp
+../img/undist/lineup_32.bmp
